@@ -2,7 +2,7 @@ Function Set-ScreenResolutionAndOrientation {
 
 <# 
     .Synopsis 
-        Sets the Screen Resolution of the primary monitor 
+        Sets the Screen Resolution of the secondary monitor
     .Description 
         Uses Pinvoke and ChangeDisplaySettings Win32API to make the change 
     .Example 
@@ -58,16 +58,35 @@ namespace Resolution
        public int    dmReserved2;
        public int    dmPanningWidth;
        public int    dmPanningHeight;
-    }; 
+    };
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct DISPLAY_DEVICE
+    {
+        public int cb;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string DeviceName;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string DeviceString;
+        public int StateFlags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string DeviceID;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string DeviceKey;
+    }
 
     class NativeMethods 
     { 
         [DllImport("user32.dll")] 
-        public static extern int EnumDisplaySettings(string deviceName, int modeNum, ref DEVMODE devMode); 
+        public static extern int EnumDisplaySettings(string deviceName, int modeNum, ref DEVMODE devMode);
         [DllImport("user32.dll")] 
         public static extern int ChangeDisplaySettings(ref DEVMODE devMode, int flags); 
+        [DllImport("user32.dll")]
+        public static extern int ChangeDisplaySettingsEx(string deviceName, ref DEVMODE devMode, IntPtr hwnd, int flags, IntPtr lParam);
+        [DllImport("user32.dll")]
+        public static extern bool EnumDisplayDevices(string lpDevice, uint iDevNum, ref DISPLAY_DEVICE lpDisplayDevice, uint dwFlags);
 
-        public const int ENUM_CURRENT_SETTINGS = -1; 
+        public const int ENUM_CURRENT_SETTINGS = -1;
         public const int CDS_UPDATEREGISTRY = 0x01; 
         public const int CDS_TEST = 0x02; 
         public const int DISP_CHANGE_SUCCESSFUL = 0; 
@@ -81,14 +100,21 @@ namespace Resolution
 
 
 
-    public class PrmaryScreenResolution 
+    public class SecondaryScreenResolution
     { 
         static public string ChangeResolution() 
         { 
 
-            DEVMODE dm = GetDevMode(); 
+            DEVMODE dm = GetDevMode();
 
-            if (0 != NativeMethods.EnumDisplaySettings(null, NativeMethods.ENUM_CURRENT_SETTINGS, ref dm)) 
+            uint deviceID = 1; // zero origin (i.e. 1 means DISPLAY2)
+
+            DISPLAY_DEVICE d = new DISPLAY_DEVICE();
+            d.cb = Marshal.SizeOf(d);
+
+            NativeMethods.EnumDisplayDevices(null, deviceID, ref d, 0);
+
+            if (0 != NativeMethods.EnumDisplaySettings(d.DeviceName, NativeMethods.ENUM_CURRENT_SETTINGS, ref dm))
             {
 
                 // swap width and height
@@ -120,39 +146,39 @@ namespace Resolution
                 }
 
 
-                int iRet = NativeMethods.ChangeDisplaySettings(ref dm, NativeMethods.CDS_TEST); 
+                int iRet = NativeMethods.ChangeDisplaySettingsEx(d.DeviceName, ref dm, IntPtr.Zero, NativeMethods.CDS_TEST, IntPtr.Zero);
 
-                if (iRet == NativeMethods.DISP_CHANGE_FAILED) 
-                { 
-                    return "Unable To Process Your Request. Sorry For This Inconvenience."; 
-                } 
-                else 
-                { 
-                    iRet = NativeMethods.ChangeDisplaySettings(ref dm, NativeMethods.CDS_UPDATEREGISTRY); 
-                    switch (iRet) 
-                    { 
-                        case NativeMethods.DISP_CHANGE_SUCCESSFUL: 
-                            { 
-                                return "Success"; 
-                            } 
-                        case NativeMethods.DISP_CHANGE_RESTART: 
-                            { 
-                                return "You Need To Reboot For The Change To Happen.\n If You Feel Any Problem After Rebooting Your Machine\nThen Try To Change Resolution In Safe Mode."; 
-                            } 
-                        default: 
-                            { 
-                                return "Failed To Change The Resolution"; 
-                            } 
-                    } 
+                if (iRet == NativeMethods.DISP_CHANGE_FAILED)
+                {
+                    return "Unable To Process Your Request. Sorry For This Inconvenience.";
+                }
+                else
+                {
+                    iRet = NativeMethods.ChangeDisplaySettingsEx(d.DeviceName, ref dm, IntPtr.Zero, NativeMethods.CDS_UPDATEREGISTRY, IntPtr.Zero);
+                    switch (iRet)
+                    {
+                        case NativeMethods.DISP_CHANGE_SUCCESSFUL:
+                            {
+                                return "Success";
+                            }
+                        case NativeMethods.DISP_CHANGE_RESTART:
+                            {
+                                return "You Need To Reboot For The Change To Happen.\n If You Feel Any Problem After Rebooting Your Machine\nThen Try To Change Resolution In Safe Mode.";
+                            }
+                        default:
+                            {
+                                return "Failed To Change The Resolution";
+                            }
+                    }
 
-                } 
+                }
 
 
-            } 
-            else 
-            { 
-                return "Failed To Change The Resolution."; 
-            } 
+            }
+            else
+            {
+                return "Failed To Change The Resolution.";
+            }
         } 
 
         private static DEVMODE GetDevMode() 
@@ -169,7 +195,7 @@ namespace Resolution
 "@ 
 
 Add-Type $pinvokeCode -ErrorAction SilentlyContinue 
-[Resolution.PrmaryScreenResolution]::ChangeResolution() 
+[Resolution.SecondaryScreenResolution]::ChangeResolution()
 }
 
 Set-ScreenResolutionAndOrientation
